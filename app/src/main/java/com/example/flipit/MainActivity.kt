@@ -17,55 +17,88 @@ import android.widget.TextView
 import androidx.appcompat.app.AlertDialog
 import androidx.constraintlayout.widget.ConstraintLayout
 import kotlin.random.Random
+import com.google.android.gms.ads.AdRequest
+import com.google.android.gms.ads.LoadAdError
+import com.google.android.gms.ads.MobileAds
+import com.google.android.gms.ads.interstitial.InterstitialAd
+import com.google.android.gms.ads.interstitial.InterstitialAdLoadCallback
+import com.google.firebase.Firebase
+import com.google.firebase.analytics.FirebaseAnalytics
+import com.google.firebase.analytics.ktx.analytics
+
 
 class MainActivity : AppCompatActivity() {
 
     private lateinit var rootLayout: ConstraintLayout
+    private lateinit var imgBackground: ImageView
     private lateinit var imgCoin: ImageView
     private lateinit var btnSettings: ImageButton
     private lateinit var txtResult: TextView
 
     private lateinit var gestureDetector: GestureDetector
-
     private var isFlipping = false
 
-    // הגדרות
     private var currentCoin = "shekel"
     private var currentBackground = R.drawable.beach_background
+
+    private val PREFS_NAME = "FlipItPrefs"
+    private val KEY_PREMIUM_UNLOCKED = "isPremiumBackgroundUnlocked"
+    private var isPremiumBackgroundUnlocked = false
+
+    private var interstitialAd: InterstitialAd? = null
+
+    private val INTERSTITIAL_AD_UNIT_ID = "ca-app-pub-3940256099942544/1033173712" // <--- ID חדש!
+
+    private lateinit var firebaseAnalytics: FirebaseAnalytics
+
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         setContentView(R.layout.activity_main)
 
+        MobileAds.initialize(this) {}
+
+        firebaseAnalytics = FirebaseAnalytics.getInstance(this)
+
+        // Load Advertisements immediate
+        loadInterstitialAd()
+
+        // Load purchase status before setting up UI
+        loadPurchaseState()
+
+        // Initialize UI elements
         rootLayout = findViewById(R.id.rootLayout)
+        imgBackground = findViewById(R.id.imgBackground)
         imgCoin = findViewById(R.id.imgCoin)
         btnSettings = findViewById(R.id.btnSettings)
         txtResult = findViewById(R.id.txtResult)
 
-        // הצגת מטבע ברירת מחדל
+        // Set default coin image and background upon launch
         setDefaultCoinImage()
+        imgBackground.setImageResource(currentBackground)
 
-        // עומק לסיבוב
+        // Set camera distance for a deeper 3D effect during rotation
         val scale = resources.displayMetrics.density
         imgCoin.cameraDistance = 8000 * scale
 
-        // כפתור הגדרות
+        // Settings button click listener
         btnSettings.setOnClickListener {
             hideResult()
             showSettingsDialog()
         }
 
-        // הגדרת זיהוי תנועות (Swipe & Tap)
+        // Initialize Gesture Detection for Tap and Swipe Up
         gestureDetector = GestureDetector(this, object : GestureDetector.SimpleOnGestureListener() {
             private val SWIPE_THRESHOLD = 100
             private val SWIPE_VELOCITY_THRESHOLD = 100
 
-            // זיהוי לחיצה קצרה (Tap)
+            // Detects a short tap
             override fun onSingleTapConfirmed(e: MotionEvent): Boolean {
                 flipCoin()
                 return true
             }
 
+            // Detects a swipe motion
             override fun onFling(
                 e1: MotionEvent?,
                 e2: MotionEvent,
@@ -77,7 +110,7 @@ class MainActivity : AppCompatActivity() {
                 val diffY = e2.y - e1.y
                 val diffX = e2.x - e1.x
 
-                // זיהוי Swipe למעלה (diffY שלילי)
+                // Detects a strong upward swipe
                 if (Math.abs(diffX) < Math.abs(diffY) && Math.abs(diffY) > SWIPE_THRESHOLD && Math.abs(velocityY) > SWIPE_VELOCITY_THRESHOLD && diffY < 0) {
                     flipCoin()
                     return true
@@ -90,24 +123,26 @@ class MainActivity : AppCompatActivity() {
             }
         })
 
-        // מעביר אירועי מגע לתמונת המטבע
+        // Attaches the gesture detector to the coin image
         imgCoin.setOnTouchListener { v, event ->
             gestureDetector.onTouchEvent(event)
             true
         }
     }
 
-    override fun onDestroy() {
-        super.onDestroy()
+    private fun loadPurchaseState() {
+        val prefs = getSharedPreferences(PREFS_NAME, MODE_PRIVATE)
+        isPremiumBackgroundUnlocked = prefs.getBoolean(KEY_PREMIUM_UNLOCKED, false)
     }
 
-    // ---------- ניהול תוצאה ----------
+    private fun savePurchaseState() {
+        val prefs = getSharedPreferences(PREFS_NAME, MODE_PRIVATE)
+        prefs.edit().putBoolean(KEY_PREMIUM_UNLOCKED, true).apply()
+    }
 
     private fun hideResult() {
         txtResult.visibility = View.INVISIBLE
     }
-
-    // ---------- תמונת מטבע לפי מטבע נוכחי ----------
 
     private fun setDefaultCoinImage() {
         val frontRes = when (currentCoin) {
@@ -119,27 +154,21 @@ class MainActivity : AppCompatActivity() {
         imgCoin.setImageResource(frontRes)
     }
 
-    // ---------- הטלת מטבע (משופרת) ----------
-
     private fun flipCoin() {
         if (isFlipping) return
         isFlipping = true
 
         hideResult()
 
-        // עדכון צבע הטקסט לפי הרקע הנוכחי
         val textColor = if (currentBackground == R.drawable.beach_background) {
-            resources.getColor(android.R.color.black, theme) // שחור לחוף
+            resources.getColor(android.R.color.black, theme)
         } else {
-            resources.getColor(android.R.color.white, theme) // לבן לשאר הרקעים
+            resources.getColor(android.R.color.white, theme)
         }
         txtResult.setTextColor(textColor)
 
-
-        // בחירת צד המטבע (עץ / פלי)
         val isHeads = Random.nextBoolean()
 
-        // בחירת תמונות לפי מטבע נוכחי
         val (headsRes, tailsRes) = when (currentCoin) {
             "shekel" -> R.drawable.coin_shekel_front to R.drawable.coin_shekel_back
             "euro" -> R.drawable.coin_euro_front to R.drawable.coin_euro_back
@@ -153,16 +182,13 @@ class MainActivity : AppCompatActivity() {
         val totalDuration = 1500L
         val rotationRounds = 5
 
-        // סיבוב מלא
         val targetRotation = (360 * rotationRounds).toFloat() + if (!isHeads) 180f else 0f
 
-        // סיבוב סביב ציר Y
         val rotate = ObjectAnimator.ofFloat(imgCoin, "rotationY", 0f, targetRotation).apply {
             duration = totalDuration
             interpolator = AccelerateDecelerateInterpolator()
         }
 
-        // תנועה למעלה ולמטה
         val upAndDown = ObjectAnimator.ofFloat(imgCoin, "translationY", 0f, -600f, 0f).apply {
             duration = totalDuration
             interpolator = OvershootInterpolator(1.0f)
@@ -172,7 +198,6 @@ class MainActivity : AppCompatActivity() {
             playTogether(rotate, upAndDown)
         }
 
-        // מציגים את צד ה-Heads לפני תחילת האנימציה
         imgCoin.setImageResource(headsRes)
 
         flipSet.addListener(object : AnimatorListenerAdapter() {
@@ -181,15 +206,12 @@ class MainActivity : AppCompatActivity() {
             }
 
             override fun onAnimationEnd(animation: Animator) {
-                // איפוס סופי של מאפיינים
                 imgCoin.rotationY = 0f
                 imgCoin.translationY = 0f
 
-                // הצגת התמונה הסופית
                 imgCoin.setImageResource(resultDrawable)
                 isFlipping = false
 
-                // מציגים את התוצאה
                 txtResult.text = resultText
                 txtResult.alpha = 0f
                 txtResult.visibility = View.VISIBLE
@@ -203,7 +225,6 @@ class MainActivity : AppCompatActivity() {
         flipSet.start()
     }
 
-    // ---------- SETTINGS ----------
 
     private fun showSettingsDialog() {
         val options = arrayOf("Change background", "Change coins", "Help")
@@ -212,7 +233,7 @@ class MainActivity : AppCompatActivity() {
             .setTitle("Settings")
             .setItems(options) { _, which ->
                 when (which) {
-                    0 -> showBackgroundDialog()
+                    0 -> showBackgroundDialogGate()
                     1 -> showCoinDialog()
                     2 -> showHelpDialog()
                 }
@@ -230,8 +251,31 @@ class MainActivity : AppCompatActivity() {
             .show()
     }
 
+    private fun showBackgroundDialogGate() {
+        if (isPremiumBackgroundUnlocked) {
+            showSelectBackgroundOptions()
+        } else {
+            showPurchaseBackgroundDialog()
+        }
+    }
 
-    private fun showBackgroundDialog() {
+    private fun showPurchaseBackgroundDialog() {
+        AlertDialog.Builder(this)
+            .setTitle("Unlock Premium Backgrounds ($2.00)")
+            .setMessage("The advanced background options cost $2.00. Do you want to unlock them now?")
+            .setPositiveButton("Yes (Pay $2)") { dialog, _ ->
+                isPremiumBackgroundUnlocked = true
+                savePurchaseState()
+                dialog.dismiss()
+                showSelectBackgroundOptions()
+            }
+            .setNegativeButton("No") { dialog, _ ->
+                dialog.dismiss()
+            }
+            .show()
+    }
+
+    private fun showSelectBackgroundOptions() {
         val names = arrayOf("Beach", "Road", "Garden")
 
         AlertDialog.Builder(this)
@@ -243,12 +287,12 @@ class MainActivity : AppCompatActivity() {
                     2 -> R.drawable.garden_background
                     else -> R.drawable.beach_background
                 }
-                rootLayout.setBackgroundResource(backgroundRes)
+
+                imgBackground.setImageResource(backgroundRes)
                 currentBackground = backgroundRes
             }
             .show()
     }
-
 
     private fun showCoinDialog() {
         val coinNames = arrayOf("Shekel", "Euro", "Dollar")
@@ -263,8 +307,36 @@ class MainActivity : AppCompatActivity() {
                 }
 
                 setDefaultCoinImage()
-
             }
             .show()
+    }
+
+
+    private fun loadInterstitialAd() {
+        val adRequest = AdRequest.Builder().build()
+
+        InterstitialAd.load(this,
+            INTERSTITIAL_AD_UNIT_ID,
+            adRequest,
+            object : InterstitialAdLoadCallback() {
+                override fun onAdLoaded(ad: InterstitialAd) {
+                    interstitialAd = ad
+                    showInterstitialAd() // Show the ad when she is ready
+                }
+
+                override fun onAdFailedToLoad(loadAdError: LoadAdError) {
+                    interstitialAd = null
+                    // If the ad fails to load initially - do nothing and allow the user to use the app
+                }
+            })
+    }
+
+    private fun showInterstitialAd() {
+        if (interstitialAd != null) {
+            interstitialAd?.show(this)
+
+        } else {
+            // If the ad doesn't load in time, it is skipped
+        }
     }
 }

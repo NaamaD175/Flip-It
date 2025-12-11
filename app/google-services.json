@@ -1,0 +1,29 @@
+{
+  "project_info": {
+    "project_number": "314002613834",
+    "project_id": "flip-it-app",
+    "storage_bucket": "flip-it-app.firebasestorage.app"
+  },
+  "client": [
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:314002613834:android:438304c17b8c2ac91828b3",
+        "android_client_info": {
+          "package_name": "com.example.flipit"
+        }
+      },
+      "oauth_client": [],
+      "api_key": [
+        {
+          "current_key": "AIzaSyC2jfm3cD1P71ZkVvHOxWyWw5q1IHvJhNo"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": []
+        }
+      }
+    }
+  ],
+  "configuration_version": "1"
+}
