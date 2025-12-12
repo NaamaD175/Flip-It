@@ -18,6 +18,7 @@ import androidx.appcompat.app.AlertDialog
 import androidx.constraintlayout.widget.ConstraintLayout
 import kotlin.random.Random
 import com.google.android.gms.ads.AdRequest
+import com.google.android.gms.ads.FullScreenContentCallback
 import com.google.android.gms.ads.LoadAdError
 import com.google.android.gms.ads.MobileAds
 import com.google.android.gms.ads.interstitial.InterstitialAd
@@ -29,28 +30,31 @@ import com.google.firebase.analytics.ktx.analytics
 
 class MainActivity : AppCompatActivity() {
 
+    // UI Components
     private lateinit var rootLayout: ConstraintLayout
     private lateinit var imgBackground: ImageView
     private lateinit var imgCoin: ImageView
     private lateinit var btnSettings: ImageButton
     private lateinit var txtResult: TextView
 
-    private lateinit var gestureDetector: GestureDetector
-    private var isFlipping = false
+    // Game Logic
+    private lateinit var gestureDetector: GestureDetector // Detects the touch of a finger
+    private var isFlipping = false // true – the coin spins and further clicks are blocked, false – you can roll
+    private var flipCount = 0 // How many tosses there have been so far - determines when to run ads
+    private var currentCoin = "shekel" // Holds the name of the currently selected currency (default - Shekel)
+    private var currentBackground = R.drawable.beach_background // Holds the name of the currently selected background
 
-    private var currentCoin = "shekel"
-    private var currentBackground = R.drawable.beach_background
+    // SharedPreferences
+    private val PREFS_NAME = "FlipItPrefs" // The name of the internal "file" on the phone where we will save the data
+    private val KEY_PREMIUM_UNLOCKED = "isPremiumBackgroundUnlocked" // The "key" where we store whether the user purchased the backgrounds
+    private var isPremiumBackgroundUnlocked = false // Holds the answer whether the backgrounds are open
+    private val KEY_ADS_REMOVED = "isAdsRemoved" // The key where we store whether the user purchased the remove Ads
+    private var isAdsRemoved = false // Holds the answer to whether to display advertisements
 
-    private val PREFS_NAME = "FlipItPrefs"
-    private val KEY_PREMIUM_UNLOCKED = "isPremiumBackgroundUnlocked"
-    private var isPremiumBackgroundUnlocked = false
-
-    private var interstitialAd: InterstitialAd? = null
-
-    private val INTERSTITIAL_AD_UNIT_ID = "ca-app-pub-3940256099942544/1033173712" // <--- ID חדש!
-
-    private lateinit var firebaseAnalytics: FirebaseAnalytics
-
+    // Ads & Analytics
+    private var interstitialAd: InterstitialAd? = null // Holds the ad itself that we downloaded from the Internet
+    private val INTERSTITIAL_AD_UNIT_ID = "ca-app-pub-3940256099942544/1033173712" // ID of the ad
+    private lateinit var firebaseAnalytics: FirebaseAnalytics // Google's tool that collects statistics
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
@@ -60,11 +64,13 @@ class MainActivity : AppCompatActivity() {
 
         firebaseAnalytics = FirebaseAnalytics.getInstance(this)
 
-        // Load Advertisements immediate
-        loadInterstitialAd()
-
-        // Load purchase status before setting up UI
+        // Load - if pay for remove ads
         loadPurchaseState()
+
+        // Prepare the ad in the background (Don't show it yet)
+        if (!isAdsRemoved) {
+            loadInterstitialAd()
+        }
 
         // Initialize UI elements
         rootLayout = findViewById(R.id.rootLayout)
@@ -130,20 +136,25 @@ class MainActivity : AppCompatActivity() {
         }
     }
 
+    // Load the user's purchase status from the local device storage
     private fun loadPurchaseState() {
         val prefs = getSharedPreferences(PREFS_NAME, MODE_PRIVATE)
         isPremiumBackgroundUnlocked = prefs.getBoolean(KEY_PREMIUM_UNLOCKED, false)
+        isAdsRemoved = prefs.getBoolean(KEY_ADS_REMOVED, false)
     }
 
-    private fun savePurchaseState() {
+    // Save the premium backgrounds purchase status to local storage
+    private fun saveBackgroundPurchaseState() {
         val prefs = getSharedPreferences(PREFS_NAME, MODE_PRIVATE)
         prefs.edit().putBoolean(KEY_PREMIUM_UNLOCKED, true).apply()
     }
 
+    //Hide the result text (heads or tails) from the screen
     private fun hideResult() {
         txtResult.visibility = View.INVISIBLE
     }
 
+    // Sets the correct image for the coin based on the selected currency
     private fun setDefaultCoinImage() {
         val frontRes = when (currentCoin) {
             "shekel" -> R.drawable.coin_shekel_front
@@ -154,6 +165,7 @@ class MainActivity : AppCompatActivity() {
         imgCoin.setImageResource(frontRes)
     }
 
+    // Flip coin - handles the animation, randomized and updates the UI
     private fun flipCoin() {
         if (isFlipping) return
         isFlipping = true
@@ -219,38 +231,108 @@ class MainActivity : AppCompatActivity() {
                     .alpha(1f)
                     .setDuration(250)
                     .start()
+
+                // Check if we need to show an ad
+                if (!isAdsRemoved) {
+                    flipCount++
+
+                    // Logic: Show on 1st flip, OR every 3 flips thereafter
+                    if (flipCount == 1 || (flipCount > 1 && (flipCount - 1) % 3 == 0)) {
+                        showInterstitialAd()
+                    }
+                }
             }
         })
 
         flipSet.start()
     }
 
-
+    // Shows the main settings menu with all available options - DYNAMICALLY
     private fun showSettingsDialog() {
-        val options = arrayOf("Change background", "Change coins", "Help")
+        val optionsList = mutableListOf<String>()
+        val actionsList = mutableListOf<Int>() // 0=Coin, 1=Bg, 2=Ads, 3=Help
+
+        // Change Coins (Always visible)
+        optionsList.add("Change coins")
+        actionsList.add(0)
+
+        // Change Background (Text changes if purchased)
+        if (isPremiumBackgroundUnlocked) {
+            optionsList.add("Change background") // No price shown
+        } else {
+            optionsList.add("Change background ($2)")
+        }
+        actionsList.add(1)
+
+        // Remove Ads (Visible ONLY if NOT purchased)
+        if (!isAdsRemoved) {
+            optionsList.add("Remove Ads ($5)")
+            actionsList.add(2)
+        }
+
+        // Help (Always visible)
+        optionsList.add("Help")
+        actionsList.add(3)
+
+        // Convert list to array for the Dialog
+        val finalOptions = optionsList.toTypedArray()
 
         AlertDialog.Builder(this)
             .setTitle("Settings")
-            .setItems(options) { _, which ->
-                when (which) {
-                    0 -> showBackgroundDialogGate()
-                    1 -> showCoinDialog()
-                    2 -> showHelpDialog()
+            .setItems(finalOptions) { _, which ->
+                // 'which' is the index in the displayed list
+                // We map it back to the original action ID using actionsList
+                val actionId = actionsList[which]
+
+                when (actionId) {
+                    0 -> showCoinDialog()
+                    1 -> showBackgroundDialogGate()
+                    2 -> showRemoveAdsDialog()
+                    3 -> showHelpDialog()
                 }
             }
             .show()
     }
 
+    // Handles the remove Ads purchase - save the state and shows a success message
+    private fun showRemoveAdsDialog() {
+        // Double check, although the button shouldn't be there if removed
+        if (isAdsRemoved) return
+
+        AlertDialog.Builder(this)
+            .setTitle("Remove Ads ($5.00)")
+            .setMessage("Hate ads? You can remove them forever for just $5.00. Want to proceed?")
+            .setPositiveButton("Yes (Pay $5)") { dialog, _ ->
+                isAdsRemoved = true
+                val prefs = getSharedPreferences(PREFS_NAME, MODE_PRIVATE)
+                prefs.edit().putBoolean(KEY_ADS_REMOVED, true).apply()
+
+                dialog.dismiss()
+
+                AlertDialog.Builder(this)
+                    .setTitle("Success!")
+                    .setMessage("Payment successful. No more ads will be shown")
+                    .setPositiveButton("Great") { d, _ -> d.dismiss() }
+                    .show()
+            }
+            .setNegativeButton("No") { dialog, _ ->
+                dialog.dismiss()
+            }
+            .show()
+    }
+
+    // Shows a help dialog explaining how to use the app
     private fun showHelpDialog() {
         AlertDialog.Builder(this)
             .setTitle("How to Flip")
-            .setMessage("To flip the coin, you have two options:\n\n1. **Tap:** Simply tap on the coin image in the center of the screen.\n2. **Swipe Up:** Swipe your finger quickly upwards from the coin image.")
+            .setMessage("To flip the coin, you have two options:\n\n1. Tap: Simply tap on the coin image in the center of the screen.\n2. Swipe Up: Swipe your finger quickly upwards from the coin image")
             .setPositiveButton("Got It!") { dialog, _ ->
                 dialog.dismiss()
             }
             .show()
     }
 
+    // Checks if premium backgrounds are unlocked, yes - shows selection list, no - shows purchase dialog
     private fun showBackgroundDialogGate() {
         if (isPremiumBackgroundUnlocked) {
             showSelectBackgroundOptions()
@@ -259,15 +341,28 @@ class MainActivity : AppCompatActivity() {
         }
     }
 
+    // Handles the premium backgrounds purchase simulation - shows success message
     private fun showPurchaseBackgroundDialog() {
         AlertDialog.Builder(this)
             .setTitle("Unlock Premium Backgrounds ($2.00)")
             .setMessage("The advanced background options cost $2.00. Do you want to unlock them now?")
             .setPositiveButton("Yes (Pay $2)") { dialog, _ ->
+                // Perform purchase logic
                 isPremiumBackgroundUnlocked = true
-                savePurchaseState()
+                saveBackgroundPurchaseState()
+
                 dialog.dismiss()
-                showSelectBackgroundOptions()
+
+                // Show Success Dialog (Matching the Ads logic)
+                AlertDialog.Builder(this)
+                    .setTitle("Success!")
+                    .setMessage("Payment successful. Premium backgrounds unlocked.")
+                    .setPositiveButton("Great") { d, _ ->
+                        d.dismiss()
+                        // 3. Only now show the options
+                        showSelectBackgroundOptions()
+                    }
+                    .show()
             }
             .setNegativeButton("No") { dialog, _ ->
                 dialog.dismiss()
@@ -275,6 +370,7 @@ class MainActivity : AppCompatActivity() {
             .show()
     }
 
+    //Displays the list of available backgrounds for the user to choose
     private fun showSelectBackgroundOptions() {
         val names = arrayOf("Beach", "Road", "Garden")
 
@@ -294,6 +390,7 @@ class MainActivity : AppCompatActivity() {
             .show()
     }
 
+    // Displays the list of available coin types for the user to choose
     private fun showCoinDialog() {
         val coinNames = arrayOf("Shekel", "Euro", "Dollar")
         AlertDialog.Builder(this)
@@ -311,7 +408,7 @@ class MainActivity : AppCompatActivity() {
             .show()
     }
 
-
+    // Loads a full screen interstitial ad from AdMob
     private fun loadInterstitialAd() {
         val adRequest = AdRequest.Builder().build()
 
@@ -321,22 +418,36 @@ class MainActivity : AppCompatActivity() {
             object : InterstitialAdLoadCallback() {
                 override fun onAdLoaded(ad: InterstitialAd) {
                     interstitialAd = ad
-                    showInterstitialAd() // Show the ad when she is ready
+                    // NOTICE: We removed "showInterstitialAd()" from here.
+                    // We only want to load it and keep it ready for later.
                 }
 
                 override fun onAdFailedToLoad(loadAdError: LoadAdError) {
                     interstitialAd = null
-                    // If the ad fails to load initially - do nothing and allow the user to use the app
                 }
             })
     }
 
+    // Displays the loaded interstitial Ad if available
     private fun showInterstitialAd() {
         if (interstitialAd != null) {
-            interstitialAd?.show(this)
+            // Setup callback to know when user closes the ad
+            interstitialAd?.fullScreenContentCallback = object : FullScreenContentCallback() {
+                override fun onAdDismissedFullScreenContent() {
+                    // Ad closed -> Reset var and load the NEXT ad so it's ready for later
+                    interstitialAd = null
+                    loadInterstitialAd()
+                }
 
+                override fun onAdFailedToShowFullScreenContent(p0: com.google.android.gms.ads.AdError) {
+                    interstitialAd = null
+                }
+            }
+
+            interstitialAd?.show(this)
         } else {
-            // If the ad doesn't load in time, it is skipped
+            // If ad wasn't ready for some reason, try loading again for next time
+            loadInterstitialAd()
         }
     }
 }
