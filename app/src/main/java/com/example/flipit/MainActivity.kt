@@ -35,6 +35,9 @@ class MainActivity : AppCompatActivity() {
     private var flipCount = 0
     private var currentBackground = R.drawable.beach_background
 
+    // Counter for remaining background changes
+    private var backgroundChangesLeft = 0
+
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         setContentView(R.layout.activity_main)
@@ -138,7 +141,7 @@ class MainActivity : AppCompatActivity() {
     private fun showSettingsDialog() {
         val options = mutableListOf("Change coins")
         // Change text based on whether backgrounds are unlocked
-        if (dataManager.isPremiumUnlocked) options.add("Change background")
+        if (dataManager.isPremiumUnlocked || backgroundChangesLeft > 0) options.add("Change background")
         else options.add("Change background ($2 / Free Ad)")
         // Only show "Remove Ads" if not already purchased
         if (!dataManager.isAdsRemoved) options.add("Remove Ads ($5)")
@@ -167,19 +170,19 @@ class MainActivity : AppCompatActivity() {
 
     // Offers payment or Rewarded Ad if locked
     private fun showBackgroundDialogGate() {
-        if (dataManager.isPremiumUnlocked) {
+        if (dataManager.isPremiumUnlocked || backgroundChangesLeft > 0) {
             showSelectBackgroundOptions()
         } else {
             AlertDialog.Builder(this)
                 .setTitle("Unlock Backgrounds")
-                .setMessage("Pay 2$ or watch a short video to unlock premium backgrounds?")
+                .setMessage("Pay \$2 for lifetime access or watch a video to change background 3 times")
                 .setPositiveButton("Pay $2") { _, _ ->
                     dataManager.isPremiumUnlocked = true
                     showSelectBackgroundOptions()
                 }
                 .setNeutralButton("Watch Video") { _, _ ->
                     adsManager.showRewarded {
-                        dataManager.isPremiumUnlocked = true
+                        backgroundChangesLeft = 3
                         showSelectBackgroundOptions()
                     }
                 }
@@ -197,6 +200,9 @@ class MainActivity : AppCompatActivity() {
                 else -> R.drawable.garden_background
             }
             imgBackground.setImageResource(currentBackground)
+            if (!dataManager.isPremiumUnlocked && backgroundChangesLeft > 0) {
+                backgroundChangesLeft--
+            }
         }.show()
     }
 
