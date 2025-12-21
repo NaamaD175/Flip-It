@@ -31,6 +31,9 @@ class CoinManager(
             else -> R.drawable.coin_shekel_front
         }
         imgCoin.setImageResource(frontRes)
+
+        imgCoin.rotation = 0f
+        imgCoin.rotationX = 0f
     }
     // Initializes and starts the flip sound effect from the raw resources
     private fun startFlipSound() {
@@ -49,6 +52,9 @@ class CoinManager(
     // Main function to execute the coin toss animation
     fun flip(onAnimationEnd: () -> Unit) {
         val isHeads = Random.nextBoolean()
+
+        imgCoin.rotation = 0f
+
         val (headsRes, tailsRes) = when (currentCoin) {
             "shekel" -> R.drawable.coin_shekel_front to R.drawable.coin_shekel_back
             "euro" -> R.drawable.coin_euro_front to R.drawable.coin_euro_back
@@ -101,7 +107,13 @@ class CoinManager(
                 // Stop the sound on impact
                 stopFlipSound()
                 // Finalize orientation and image
-                imgCoin.rotationX = if (isHeads) 0f else 180f
+                if (isHeads) {
+                    imgCoin.rotationX = 0f
+                    imgCoin.rotation = 0f
+                } else {
+                    imgCoin.rotationX = 180f
+                    imgCoin.rotation = 180f
+                }
                 imgCoin.setImageResource(resultDrawable)
 
                 // Show the result text with a fade-in effect
