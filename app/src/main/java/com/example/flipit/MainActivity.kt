@@ -69,6 +69,8 @@ class MainActivity : AppCompatActivity() {
 
         // Setup User Input Listeners (Taps and Swipes)
         setupGestureDetector()
+        // New version popup
+        showNewVersionPopup()
 
         // Settings Button Listener
         btnSettings.setOnClickListener {
@@ -254,5 +256,17 @@ class MainActivity : AppCompatActivity() {
     private fun showHelpDialog() {
         AlertDialog.Builder(this).setTitle("How to Flip")
             .setMessage("Tap the coin or swipe up to flip it!").show()
+    }
+
+    // New version popup
+    private fun showNewVersionPopup() {
+        AlertDialog.Builder(this)
+            .setTitle("What's New in Flip It 2.0")
+            .setMessage("• Advanced 3D Physics Engine\n" +
+                    "• New Premium Themes\n" +
+                    "• Global Coin Skins (Euro & Dollar")
+            .setPositiveButton("LET'S FLIP!") { dialog, _ -> dialog.dismiss() }
+            .setCancelable(false)
+            .show()
     }
 }
