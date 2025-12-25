@@ -12,6 +12,7 @@ class DataManager(context: Context) {
         // Unique keys used to identify specific data items in the storage
         private const val KEY_PREMIUM_UNLOCKED = "isPremiumBackgroundUnlocked"
         private const val KEY_ADS_REMOVED = "isAdsRemoved"
+        private const val KEY_APP_RATING = "app_rating"
     }
 
     // Manage the premium backgrounds unlock state
@@ -27,4 +28,11 @@ class DataManager(context: Context) {
         get() = prefs.getBoolean(KEY_ADS_REMOVED, false)
         // Saves the updated ad-status preference
         set(value) = prefs.edit().putBoolean(KEY_ADS_REMOVED, value).apply()
+
+    var appRating: Float
+        // Returns the saved star rating, or 0.0f if the user hasn't rated yet
+        get() = prefs.getFloat(KEY_APP_RATING, 0f)
+        // Saves the new star rating to the local storage
+        set(value) = prefs.edit().putFloat(KEY_APP_RATING, value).apply()
+
 }

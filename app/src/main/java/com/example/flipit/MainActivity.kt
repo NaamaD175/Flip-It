@@ -28,6 +28,7 @@ class MainActivity : AppCompatActivity() {
     private lateinit var adsManager: AdsManager
     private lateinit var coinManager: CoinManager
     private lateinit var firebaseAnalytics: FirebaseAnalytics
+    private lateinit var dialogManager: DialogManager
 
     // Game State
     private lateinit var gestureDetector: GestureDetector
@@ -49,6 +50,7 @@ class MainActivity : AppCompatActivity() {
         // Initialize Data and Ad Managers
         dataManager = DataManager(this)
         adsManager = AdsManager(this)
+        dialogManager = DialogManager(this)
 
         // Initialize UI References
         initUI()
@@ -99,20 +101,54 @@ class MainActivity : AppCompatActivity() {
             android.R.color.black else android.R.color.white
         txtResult.setTextColor(resources.getColor(textColor, theme))
 
-        // Trigger the 3D animation
+        /// Trigger the 3D animation
         coinManager.flip {
             isFlipping = false
             checkAndShowAd()
+            checkAndShowRateDialog() // every 5
+            checkAndShowShareDialog() // every 6
         }
     }
 
     // Determine when an Interstitial Ad should be displayed
     private fun checkAndShowAd() {
+        flipCount++;
+
         if (!dataManager.isAdsRemoved) {
-            flipCount++
             // Show ad on the 1st flip and then every 3 flips thereafter
             if (flipCount == 1 || (flipCount > 1 && (flipCount - 1) % 3 == 0)) {
                 adsManager.showInterstitial()
+            }
+        }
+    }
+
+    // Determine when the Rate Us dialog should be displayed
+    private fun checkAndShowRateDialog() {
+        // Show the dialog every 5 flips
+        if (flipCount > 0 && flipCount % 5 == 0) {
+            dialogManager.showRateUsDialog { rating ->
+                dataManager.appRating = rating
+            }
+        }
+    }
+
+    // Triggers the system's native share sheet
+    private fun shareAppAction() {
+        val shareIntent = android.content.Intent(android.content.Intent.ACTION_SEND)
+        shareIntent.type = "text/plain"
+        val shareBody = "Check out this cool Flip It app! Download it here: https://play.google.com/store/apps/details?id=$packageName"
+        shareIntent.putExtra(android.content.Intent.EXTRA_SUBJECT, "Flip It App")
+        shareIntent.putExtra(android.content.Intent.EXTRA_TEXT, shareBody)
+
+        // Open the share chooser
+        startActivity(android.content.Intent.createChooser(shareIntent, "Share via"))
+    }
+
+    // Determine when the Share App dialog should be displayed
+    private fun checkAndShowShareDialog() {
+        if (flipCount > 0 && flipCount % 6 == 0) {
+            dialogManager.showShareDialog {
+                shareAppAction()
             }
         }
     }
