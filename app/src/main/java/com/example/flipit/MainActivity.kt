@@ -12,6 +12,9 @@ import androidx.appcompat.app.AppCompatActivity
 import androidx.constraintlayout.widget.ConstraintLayout
 import com.google.android.gms.ads.MobileAds
 import com.google.firebase.analytics.FirebaseAnalytics
+import android.view.ViewGroup
+import android.widget.Button
+import com.google.firebase.crashlytics.FirebaseCrashlytics
 
 // Serves as the primary controller for the Flip It app
 class MainActivity : AppCompatActivity() {
@@ -42,6 +45,9 @@ class MainActivity : AppCompatActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         setContentView(R.layout.activity_main)
+
+        // Crashlytics
+        // FirebaseCrashlytics.getInstance().setCrashlyticsCollectionEnabled(true)
 
         // Initialize External SDKs (Ads and Analytics)
         MobileAds.initialize(this) {}
@@ -77,6 +83,17 @@ class MainActivity : AppCompatActivity() {
             txtResult.visibility = View.INVISIBLE
             showSettingsDialog()
         }
+
+        // Crashlytics
+        // val crashButton = Button(this)
+        // crashButton.text = "Test Crash"
+        // crashButton.setOnClickListener {
+           // throw RuntimeException("Test Crash")
+        // }
+
+        // addContentView(crashButton, ViewGroup.LayoutParams(
+           // ViewGroup.LayoutParams.MATCH_PARENT,
+            // ViewGroup.LayoutParams.WRAP_CONTENT))
     }
 
     // Links XML views to Kotlin variables and sets visual properties
@@ -96,6 +113,12 @@ class MainActivity : AppCompatActivity() {
     private fun handleFlipAction() {
         if (isFlipping) return
         isFlipping = true
+
+        // Add events
+        val bundle = Bundle()
+        bundle.putString("coin_type", coinManager.currentCoin)
+        firebaseAnalytics.logEvent("coin_flip", bundle)
+
         txtResult.visibility = View.INVISIBLE
 
         // Adjust result text color based on the current background for contrast
@@ -201,8 +224,15 @@ class MainActivity : AppCompatActivity() {
     private fun showCoinDialog() {
         val coinNames = arrayOf("Shekel", "Euro", "Dollar")
         AlertDialog.Builder(this).setTitle("Change coin").setItems(coinNames) { _, which ->
+            val selectedCoin = coinNames[which].lowercase()
             coinManager.currentCoin = coinNames[which].lowercase()
             coinManager.updateDefaultImage()
+
+            // Add events
+            val bundle = Bundle()
+            bundle.putString("selected_currency", selectedCoin)
+            firebaseAnalytics.logEvent("change_coin", bundle)
+
         }.show()
     }
 
@@ -221,6 +251,10 @@ class MainActivity : AppCompatActivity() {
                 .setNeutralButton("Watch Video") { _, _ ->
                     adsManager.showRewarded {
                         backgroundChangesLeft = 3
+
+                        // Add events
+                        firebaseAnalytics.logEvent("rewarded_ad_completed", null)
+
                         showSelectBackgroundOptions()
                     }
                 }
@@ -248,12 +282,21 @@ class MainActivity : AppCompatActivity() {
     private fun showRemoveAdsDialog() {
         AlertDialog.Builder(this).setTitle("Remove Ads")
             .setMessage("Remove all ads for 5$?")
-            .setPositiveButton("Pay") { _, _ -> dataManager.isAdsRemoved = true }
+            .setPositiveButton("Pay") { _, _ -> dataManager.isAdsRemoved = true
+
+                // Add events
+                val bundle = Bundle()
+                bundle.putDouble(FirebaseAnalytics.Param.VALUE, 5.0)
+                bundle.putString(FirebaseAnalytics.Param.CURRENCY, "USD")
+                firebaseAnalytics.logEvent(FirebaseAnalytics.Event.PURCHASE, bundle)
+            }
             .setNegativeButton("Cancel", null).show()
     }
 
     // Basic instructional dialog
     private fun showHelpDialog() {
+        // Add events
+        firebaseAnalytics.logEvent("help_viewed", null)
         AlertDialog.Builder(this).setTitle("How to Flip")
             .setMessage("Tap the coin or swipe up to flip it!").show()
     }
