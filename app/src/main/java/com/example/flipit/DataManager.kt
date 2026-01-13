@@ -13,6 +13,7 @@ class DataManager(context: Context) {
         private const val KEY_PREMIUM_UNLOCKED = "isPremiumBackgroundUnlocked"
         private const val KEY_ADS_REMOVED = "isAdsRemoved"
         private const val KEY_APP_RATING = "app_rating"
+        private const val KEY_LAST_USE_TIME = "last_use_time" //Retention push notification
     }
 
     // Manage the premium backgrounds unlock state
@@ -35,4 +36,8 @@ class DataManager(context: Context) {
         // Saves the new star rating to the local storage
         set(value) = prefs.edit().putFloat(KEY_APP_RATING, value).apply()
 
+    // For retention - Tracks the last timestamp the app was opened to identify dormant users
+    var lastUseTime: Long
+        get() = prefs.getLong(KEY_LAST_USE_TIME, 0L)
+        set(value) = prefs.edit().putLong(KEY_LAST_USE_TIME, value).apply()
 }

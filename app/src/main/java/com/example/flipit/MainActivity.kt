@@ -12,6 +12,12 @@ import androidx.appcompat.app.AppCompatActivity
 import androidx.constraintlayout.widget.ConstraintLayout
 import com.google.android.gms.ads.MobileAds
 import com.google.firebase.analytics.FirebaseAnalytics
+import android.widget.Toast
+import android.app.NotificationChannel
+import android.app.NotificationManager
+import android.content.Context
+import androidx.core.app.NotificationCompat
+import android.os.Build
 import android.view.ViewGroup
 import android.widget.Button
 import com.google.firebase.crashlytics.FirebaseCrashlytics
@@ -78,6 +84,11 @@ class MainActivity : AppCompatActivity() {
         // New version popup
         showNewVersionPopup()
 
+        // Retention - Check if the user hasn't visited in 48h
+        checkRetentionAndSimulatePush()
+        // Update the last use timestamp to "now" for future checks
+        dataManager.lastUseTime = System.currentTimeMillis()
+
         // Settings Button Listener
         btnSettings.setOnClickListener {
             txtResult.visibility = View.INVISIBLE
@@ -112,6 +123,14 @@ class MainActivity : AppCompatActivity() {
     // Handler for flipping the coin
     private fun handleFlipAction() {
         if (isFlipping) return
+        flipCount++
+
+        // Retention - Habit Loop Check (The Reward)
+        if (flipCount == 3) {
+            Toast.makeText(this, "Master Flipper! 3 flips reached!", Toast.LENGTH_SHORT).show()
+            android.util.Log.d("RetentionPolicy", "Habit Loop Milestone reached")
+        }
+
         isFlipping = true
 
         // Add events
@@ -137,8 +156,6 @@ class MainActivity : AppCompatActivity() {
 
     // Determine when an Interstitial Ad should be displayed
     private fun checkAndShowAd() {
-        flipCount++;
-
         if (!dataManager.isAdsRemoved) {
             // Show ad on the 1st flip and then every 3 flips thereafter
             if (flipCount == 1 || (flipCount > 1 && (flipCount - 1) % 3 == 0)) {
@@ -311,5 +328,51 @@ class MainActivity : AppCompatActivity() {
             .setPositiveButton("LET'S FLIP!") { dialog, _ -> dialog.dismiss() }
             .setCancelable(false)
             .show()
+    }
+
+    // Retention - Push Notification
+    private fun checkRetentionAndSimulatePush() {
+        val lastUsed = dataManager.lastUseTime
+        if (lastUsed == 0L) return // Skip check for first-time users
+
+        val currentTime = System.currentTimeMillis()
+        // Calculate the difference in hours
+        val hoursSinceLastUse = (currentTime - lastUsed) / (1000 * 60 * 60)
+
+        // Only trigger if 48 hours or more have passed
+        if (hoursSinceLastUse >= 48)
+        {
+            sendLocalNotification()
+            // Log for debugging
+            android.util.Log.d("RetentionPolicy", "Dormant user detected ($hoursSinceLastUse hours). Push triggered.")
+        }
+    }
+
+    // New function to build and display the notification in the Android status bar
+    private fun sendLocalNotification() {
+        val channelId = "flip_it_retention_channel"
+        val notificationManager = getSystemService(Context.NOTIFICATION_SERVICE) as NotificationManager
+
+        // Create the Notification Channel
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+            val name = "Retention Notifications"
+            val descriptionText = "Notifications to bring users back to the app"
+            val importance = NotificationManager.IMPORTANCE_DEFAULT
+            val channel = NotificationChannel(channelId, name, importance).apply {
+                description = descriptionText
+            }
+            notificationManager.createNotificationChannel(channel)
+        }
+
+        // Build the notification content
+        val builder = NotificationCompat.Builder(this, channelId)
+            .setSmallIcon(android.R.drawable.ic_dialog_info) // The icon that appears in the status bar
+            .setContentTitle("Flip It: Stuck on a choice? 🎲")
+            .setContentText("We missed you! Open the app and let the coin decide for you.")
+            .setPriority(NotificationCompat.PRIORITY_DEFAULT)
+            .setAutoCancel(true) // Removes notification when the user taps it
+
+        // Show the notification
+        notificationManager.notify(101, builder.build())
     }
 }
